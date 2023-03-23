@@ -77,14 +77,23 @@ open class ASMListView<VM: IASMListViewModel>: ASMView<VM>, ASTableDelegate {
     
     private func onItemSelected(_ indexPath: IndexPath) {
         guard let viewModel = self.viewModel else { return }
-        let cellViewModel = viewModel.itemsSource[indexPath.row, indexPath.section]
-        
-        viewModel.rxSelectedItem.accept(cellViewModel)
-        viewModel.rxSelectedIndex.accept(indexPath)
-        
-        viewModel.selectedItemDidChange(cellViewModel)
-        
-        selectedItemDidChange(cellViewModel)
+        viewModel.itemsSource.getElementInSection(at: indexPath.row, section: indexPath.section) { [weak self] in
+            guard let cellViewModel = $0 else { return }
+            viewModel.rxSelectedItem.accept(cellViewModel)
+            viewModel.rxSelectedIndex.accept(indexPath)
+            
+            viewModel.selectedItemDidChange(cellViewModel)
+            
+            self?.selectedItemDidChange(cellViewModel)
+        }
+//        let cellViewModel = viewModel.itemsSource[indexPath.row, indexPath.section]
+//        
+//        viewModel.rxSelectedItem.accept(cellViewModel)
+//        viewModel.rxSelectedIndex.accept(indexPath)
+//        
+//        viewModel.selectedItemDidChange(cellViewModel)
+//        
+//        selectedItemDidChange(cellViewModel)
     }
     
     open func selectedItemDidChange(_ cellViewModel: CVM) { }

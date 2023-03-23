@@ -25,7 +25,7 @@ public class ASMSectionList<T>: AnimatableSectionModelType where T: IdentifyEqua
     
     public var items = [T]()
     
-    public subscript(index: Int) -> T {
+    fileprivate subscript(index: Int) -> T {
         get { return items[index] }
         set(newValue) { insert(newValue, at: index) }
     }
@@ -56,14 +56,26 @@ public class ASMSectionList<T>: AnimatableSectionModelType where T: IdentifyEqua
         items.append(contentsOf: initialElements)
     }
     
+    public func setItem(at index: Int, item: T) {
+        insert(item, at: index)
+    }
+    
+    public func getItem(at index: Int, completion: (T?) -> ()) {
+        let items = self.items
+        completion(items[safe: index])
+    }
+    
     public func forEach(_ body: ((Int, T) -> ())) {
+        let items = self.items
         for (i, element) in items.enumerated() {
             body(i, element)
         }
     }
     
     public func insert(_ element: T, at index: Int) {
+        var items = self.items
         items.insert(element, at: index)
+        self.items = items
     }
     
     public func insert(_ elements: [T], at index: Int) {
@@ -89,7 +101,8 @@ public class ASMSectionList<T>: AnimatableSectionModelType where T: IdentifyEqua
     }
     
     public func remove(at indice: [Int]) {
-        let newSources = items.enumerated().compactMap { indice.contains($0.offset) ? nil : $0.element }
+        let currentItems = items
+        let newSources = currentItems.enumerated().compactMap { indice.contains($0.offset) ? nil : $0.element }
         items = newSources
     }
     
@@ -139,12 +152,26 @@ public class ASMSectionList<T>: AnimatableSectionModelType where T: IdentifyEqua
 public class ASMReactiveCollection<T>: SectionModelType where T: IdentifyEquatable {
     public typealias Item = ASMSectionList<T>
     
+    private let queue = DispatchQueue(label: "io.section.collection")
+    
     public func element(atIndexPath: IndexPath) -> Any? {
-        return self[atIndexPath.row, atIndexPath.section]
+        var value: Any?
+        queue.sync { [weak self] in
+            self?.getElementInSection(at: atIndexPath.row, section: atIndexPath.section) {
+                value = $0
+            }
+        }
+        return value
     }
     
     public func element(atSection: Int, row: Int) -> Any? {
-        return self[row, atSection]
+        var value: Any?
+        queue.sync { [weak self] in
+            self?.getElementInSection(at: row, section: atSection) {
+                value = $0
+            }
+        }
+        return value
     }
     
     public var rxAnimated = BehaviorRelay<Bool>(value: true)
@@ -162,14 +189,36 @@ public class ASMReactiveCollection<T>: SectionModelType where T: IdentifyEquatab
         self.rxAnimated.accept(original.rxAnimated.value)
     }
     
-    public subscript(index: Int, section: Int) -> T {
-        get { return items[section][index] }
-        set(newValue) { insert(newValue, at: index, of: section) }
+//    public subscript(index: Int, section: Int) -> T {
+//        get { return items[section][index] }
+//        set(newValue) { insert(newValue, at: index, of: section) }
+//    }
+//
+//    public subscript(index: Int) -> ASMSectionList<T> {
+//        get { return items[index] }
+//        set(newValue) { insertSection(newValue, at: index) }
+//    }
+    
+    public func setElementInSection(at index: Int, section: Int, element: T) {
+        insert(element, at: index, of: section)
     }
     
-    public subscript(index: Int) -> ASMSectionList<T> {
-        get { return items[index] }
-        set(newValue) { insertSection(newValue, at: index) }
+    public func getElementInSection(at index: Int, section: Int, completion: (T?) -> ()) {
+        let items = self.items
+        guard let item = items[safe: section] else {
+            completion(nil)
+            return
+        }
+        item.getItem(at: index, completion: completion)
+    }
+    
+    public func setSection(at index: Int, section: ASMSectionList<T>) {
+        insertSection(section, at: index)
+    }
+    
+    public func getSection(at index: Int, completion: (ASMSectionList<T>?) -> ()) {
+        let items = self.items
+        completion(items[safe: index])
     }
     
     public var count: Int {
@@ -242,12 +291,13 @@ public class ASMReactiveCollection<T>: SectionModelType where T: IdentifyEquatab
     
     public func insertSection(_ sectionList: ASMSectionList<T>, at index: Int, animated: Bool = true) {
         rxAnimated.accept(animated)
+        var items = self.items
         if items.count == 0 {
             items.append(sectionList)
         } else {
             items.insert(sectionList, at: index)
         }
-        
+        self.items = items
         rxInnerSources.accept(items)
     }
     
@@ -387,7 +437,7 @@ public class ASMReactiveCollection<T>: SectionModelType where T: IdentifyEquatab
     
     public func move(from fromIndexPaths: [IndexPath], to toIndexPaths: [IndexPath], animated: Bool = true) {
         guard fromIndexPaths.count == toIndexPaths.count else { return }
-        
+        var items = self.items
         var validIndice: [Int] = []
         for (i, fromIndexPath) in fromIndexPaths.enumerated() {
             let toIndexPath = toIndexPaths[i]
@@ -411,6 +461,7 @@ public class ASMReactiveCollection<T>: SectionModelType where T: IdentifyEquatab
         }
         
         if validIndice.count > 0 {
+            self.items = items
             rxAnimated.accept(animated)
             rxInnerSources.accept(items)
         }
@@ -455,6 +506,7 @@ public class ASMReactiveCollection<T>: SectionModelType where T: IdentifyEquatab
     }
     
     public func indexPath(of item: T) -> IndexPath? {
+        let items = self.items
         for i in 0..<count {
             for j in 0..<items[i].count {
                 if items[i][j] == item {
@@ -463,5 +515,15 @@ public class ASMReactiveCollection<T>: SectionModelType where T: IdentifyEquatab
             }
         }
         return nil
+    }
+}
+
+extension Array {
+    subscript(safe index: Int) -> Element? {
+        guard index >= 0, index < endIndex else {
+            return nil
+        }
+        
+        return self[index]
     }
 }
