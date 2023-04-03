@@ -204,7 +204,6 @@ public class ASMReactiveCollection<T>: SectionModelType where T: IdentifyEquatab
     }
     
     public func getElementInSection(at index: Int, section: Int, completion: (T?) -> ()) {
-        let items = self.items
         guard let item = items[safe: section] else {
             completion(nil)
             return
@@ -515,6 +514,11 @@ public class ASMReactiveCollection<T>: SectionModelType where T: IdentifyEquatab
             }
         }
         return nil
+    }
+    
+    @discardableResult
+    public func first(where predicate: (ASMSectionList<T>) throws -> Bool) rethrows -> ASMSectionList<T>? {
+        return try items.first(where: predicate)
     }
 }
 
